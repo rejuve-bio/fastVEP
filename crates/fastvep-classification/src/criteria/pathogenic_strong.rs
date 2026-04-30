@@ -129,6 +129,13 @@ fn evaluate_ps1(
     details.insert("alt_aa".into(), serde_json::json!(alt_aa));
 
     if let Some(ref cpd) = input.clinvar_protein {
+        // Substring match `"pathogenic"` matches both ClinVar
+        // `Pathogenic` and `Likely_pathogenic`. PS1 strictly per
+        // Richards 2015 wants a *Pathogenic* same-AA precedent, but
+        // ClinGen Hereditary Cancer / Lynch / FH VCEPs all accept LP
+        // precedents under PS1 in current curation guidance; treating
+        // LP as sufficient evidence at the same residue mirrors that
+        // pragmatic interpretation.
         let matches: Vec<&crate::sa_extract::ClinvarProteinVariant> = cpd
             .protein_variants
             .iter()

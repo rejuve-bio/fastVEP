@@ -28,7 +28,7 @@ Also computes a priority score for ranking:
   - Pathogenic↔Benign (extreme reversal) > LP↔LB
   - More criteria fired = higher classifier confidence in disagreement
 
-Outputs `data/benchmark/output_v6/discrepancies_for_md_review.tsv`
+Outputs `data/benchmark/output_v7/discrepancies_for_md_review.tsv`
 sorted highest-priority-first.
 
 Usage:
@@ -43,7 +43,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path("/Users/kuan-lin.huang/Projects/fastVEP")
-OUT_DIR = ROOT / "data/benchmark/output_v6"
+OUT_DIR = ROOT / "data/benchmark/output_v7"
 DISC = OUT_DIR / "discrepancies.tsv"
 TRUTH = ROOT / "data/benchmark/clinvar_2star_truth.tsv"
 CLINVAR_VCF = ROOT / "data/benchmark/clinvar_2star.vcf"

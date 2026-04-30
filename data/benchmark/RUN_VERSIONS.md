@@ -8,18 +8,18 @@ bugs had been fixed.
 
 ## SA stack per run
 
-|                                     |  v1  |  v2  |  v4  |  v5  |  v6  |
-|-------------------------------------|:----:|:----:|:----:|:----:|:----:|
-| **Variant-level (.osa)**            |      |      |      |      |      |
-| ClinVar                             |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
-| gnomAD v4.1 exomes (per-chrom)      |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
-| REVEL v1.3 (per-chrom)              |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
-| **PhyloP** (per-chrom)              |  ❌  |  ✅  |  ✅  |  ✅  |  ✅  |
-| **SpliceAI** (per-chrom)            |  ❌  |  ✅  |  ✅  |  ✅  |  ✅  |
-| **Gene-level (.oga)**               |      |      |      |      |      |
-| ClinVar protein                     |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
-| gnomAD gene constraints             |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
-| **ClinGen Gene-Disease Validity**   |  ❌  |  ✅  |  ✅  |  ✅  |  ✅  |
+|                                     |  v1  |  v2  |  v4  |  v5  |  v6  |  v7  |
+|-------------------------------------|:----:|:----:|:----:|:----:|:----:|:----:|
+| **Variant-level (.osa)**            |      |      |      |      |      |      |
+| ClinVar                             |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| gnomAD v4.1 exomes (per-chrom)      |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| REVEL v1.3 (per-chrom)              |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| **PhyloP** (per-chrom)              |  ❌  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| **SpliceAI** (per-chrom)            |  ❌  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| **Gene-level (.oga)**               |      |      |      |      |      |      |
+| ClinVar protein                     |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| gnomAD gene constraints             |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
+| **ClinGen Gene-Disease Validity**   |  ❌  |  ✅  |  ✅  |  ✅  |  ✅  |  ✅  |
 
 (PhyloP and SpliceAI are distilled from gnomAD v4 INFO fields
 `phylop` and `spliceai_ds_max` rather than re-downloaded; the gnomAD
@@ -30,14 +30,16 @@ explicit Definitive/Strong/Moderate filtering.)
 
 ## Code fixes per run
 
-|                                                              |  v1  |  v2  |  v4  |  v5  |  v6  |
-|--------------------------------------------------------------|:----:|:----:|:----:|:----:|:----:|
-| SpliceAI `spliceAI` json_key recognised in classifier        |      |      |  ✅  |  ✅  |  ✅  |
-| PhyloP read from `allele_supplementary` (CLI's actual route) |      |      |  ✅  |  ✅  |  ✅  |
-| VCF + bgzip output (vs 25 GB pretty JSON)                    |      |      |  ✅  |  ✅  |  ✅  |
-| `vep_allele(ref, alt)` indel matching in concordance script  |      |      |      |  ✅  |  ✅  |
-| **PM2 fires when variant absent from gnomAD** (`pm2_absent_when_no_record`) |      |      |      |      |  ✅  |
-| **BP4-splice gated to non-PVS1 consequences** (Walker 2023)  |      |      |      |      |  ✅  |
+|                                                              |  v1  |  v2  |  v4  |  v5  |  v6  |  v7  |
+|--------------------------------------------------------------|:----:|:----:|:----:|:----:|:----:|:----:|
+| SpliceAI `spliceAI` json_key recognised in classifier        |      |      |  ✅  |  ✅  |  ✅  |  ✅  |
+| PhyloP read from `allele_supplementary` (CLI's actual route) |      |      |  ✅  |  ✅  |  ✅  |  ✅  |
+| VCF + bgzip output (vs 25 GB pretty JSON)                    |      |      |  ✅  |  ✅  |  ✅  |  ✅  |
+| `vep_allele(ref, alt)` indel matching in concordance script  |      |      |      |  ✅  |  ✅  |  ✅  |
+| **PM2 fires when variant absent from gnomAD** (`pm2_absent_when_no_record`) |      |      |      |      |  ✅  |  ✅  |
+| **BP4-splice gated to non-PVS1 consequences** (Walker 2023)  |      |      |      |      |  ✅  |  ✅  |
+| **BS1 uses max-pop AF (mirrors BA1)** (ClinGen SVI)          |      |      |      |      |      |  ✅  |
+| **BS2 AD requires AC ≥ 5 (`bs2_ad_min_ac`)** (Richards 2015) |      |      |      |      |      |  ✅  |
 
 v3 was a partial run (PhyloP+SpliceAI loaded but bugs still latent);
 its results are functionally indistinguishable from v2 and were
@@ -45,17 +47,18 @@ overwritten before being preserved.
 
 ## Headline metrics per run
 
-|                            |     v1     |     v5     |     v6     |  Δ v1→v6  |
-|----------------------------|-----------:|-----------:|-----------:|----------:|
-| Same-direction concordance |   54.7 %   |   65.1 %   | **70.3 %** |**+15.6 pp**|
-| Exact match                |   52.7 %   |   56.0 %   | **56.8 %** | +4.1 pp   |
-| Opposite direction         |   0.005 %  |   0.06 %   |   0.05 %   | (≈0)      |
-| NoCall                     |   0.0 %    |   0.0 %    |   0.0 %    | —         |
-| **Pathogenic recall**      |   **15.7 %** | 20.6 %   | **63.8 %** |**+48 pp** |
-| **Likely_pathogenic recall** | **20.9 %** | 26.7 %   | **51.8 %** |**+31 pp** |
-| VUS recall                 |   96.6 %   |   92.6 %   |   91.5 %   | -5 pp     |
-| **Likely_benign recall**   |   **3.2 %**|   42.4 %   |   42.4 %   |**+39 pp** |
-| Benign recall              |   33.2 %   |   58.0 %   |   58.0 %   | +25 pp    |
+|                            |     v1     |     v5     |     v6     |     v7     |  Δ v1→v7  |
+|----------------------------|-----------:|-----------:|-----------:|-----------:|----------:|
+| Same-direction concordance |   54.7 %   |   65.1 %   |   70.3 %   | **70.8 %** |**+16.1 pp**|
+| Exact match                |   52.7 %   |   56.0 %   |   56.8 %   | **58.7 %** |**+6.0 pp** |
+| Opposite direction         |   0.005 %  |   0.06 %   |   0.05 %   |   0.0 %    | (≈0)      |
+| NoCall                     |   0.0 %    |   0.0 %    |   0.0 %    |   0.0 %    | —         |
+| **Pathogenic recall**      |   **15.7 %** | 20.6 %   |   63.8 %   | **64.0 %** |**+48 pp** |
+| **Likely_pathogenic recall** | **20.9 %** | 26.7 %   |   51.8 %   | **52.0 %** |**+31 pp** |
+| VUS recall                 |   96.6 %   |   92.6 %   |   91.5 %   |   92.0 %   | -5 pp     |
+| **Likely_benign recall**   |   **3.2 %**|   42.4 %   |   42.4 %   | **42.7 %** |**+39 pp** |
+| Benign recall              |   33.2 %   |   58.0 %   |   58.0 %   | **59.0 %** |**+26 pp** |
+| **Benign exact-match (B→B)** | 48,282 | 48,996 | 48,996 | **63,481** |**+15,199** |
 
 ## Driver of each lift
 
@@ -82,10 +85,23 @@ overwritten before being preserved.
   drop to LB / B (which doesn't match a VUS truth). Same-direction
   rate still rises because the P/LP/B/LB gains far outweigh the VUS
   loss.
+- **+15,199 Benign exact-match calls** (v6 → v7): two ClinGen-SVI BS-tier
+  fixes from a deep classifier audit. **(1)** BS1 was reading cohort
+  `all_af` instead of `max_pop_af` — a 5%-AF EAS variant could slip
+  under a 1% BS1 threshold whenever the global cohort diluted it.
+  ClinGen SVI applies BS1 against the max-pop AF (mirroring BA1).
+  Effect: BS1 fires went **6.4× higher** (4,104 → 26,291). Many LB
+  calls in v6 promote to B in v7 once BS1+BP fires. **(2)** BS2 was
+  firing for AD genes on any single het in gnomAD (`AF > 0 && AN >
+  10000`) — a singleton novel allele in a 100K cohort isn't
+  "observed in healthy adult" per Richards 2015. Tightened to AC ≥ 5
+  by default (`bs2_ad_min_ac`). False-positive BS2 fires on
+  Pathogenic ClinVar variants cut by **52%** (809 → 389). Net
+  opposite-direction rate dropped from 0.05% to 0.0%.
 
 ## Where to find each version
 
 - v1 baseline: `output_v1/concordance_matrix.csv` +
   `output_v1/README.md` (raw outputs were overwritten; matrix
   reconstructed from documentation)
-- v6 current: `output_v6/` (full outputs + figures + raw VCF.gz)
+- v7 current: `output_v7/` (full outputs + figures + raw VCF.gz)

@@ -55,6 +55,13 @@ fn evaluate_pm1(
     if let Some(ref cpd) = input.clinvar_protein {
         let low = prot_pos.saturating_sub(window);
         let high = prot_pos + window;
+        // Substring match `"pathogenic"` is intentional: it counts both
+        // ClinVar `Pathogenic` and `Likely_pathogenic` records as
+        // hotspot evidence. Most VCEPs (and ClinGen PM1 calibration)
+        // include LP variants in residue-density counts because LP
+        // variants are still ≥90 % posterior probability of
+        // pathogenicity per the Tavtigian Bayesian framework — the
+        // hotspot signal is robust to LP/P aggregation.
         let nearby_pathogenic: usize = cpd
             .protein_variants
             .iter()
@@ -547,7 +554,11 @@ fn evaluate_pm5(
     details.insert("alt_aa".into(), serde_json::json!(alt_aa));
 
     if let Some(ref cpd) = input.clinvar_protein {
-        // Find pathogenic variants at same position with DIFFERENT amino acid change
+        // Find pathogenic variants at same position with DIFFERENT amino acid change.
+        // Substring match `"pathogenic"` includes both `Pathogenic` and
+        // `Likely_pathogenic` ClinVar significance values; PM5 fires when ANY
+        // P/LP variant exists at the same residue with a different alt AA
+        // (LP at the residue is sufficient evidence of a same-codon hotspot).
         let different_aa_matches: Vec<&crate::sa_extract::ClinvarProteinVariant> = cpd
             .protein_variants
             .iter()

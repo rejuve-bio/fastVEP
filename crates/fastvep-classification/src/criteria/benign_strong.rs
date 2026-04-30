@@ -369,4 +369,118 @@ mod tests {
         let result = evaluate_bs2(&input, &AcmgConfig::default());
         assert!(!result.met);
     }
+
+    fn make_input_omim(
+        gnomad: Option<GnomadData>,
+        omim: Option<crate::sa_extract::OmimData>,
+    ) -> ClassificationInput {
+        let mut i = make_input(gnomad);
+        i.omim = omim;
+        i
+    }
+
+    #[test]
+    fn test_bs2_ad_gene_singleton_does_not_fire() {
+        // AD gene + AC=1: a single heterozygote is not "observed in
+        // healthy adult" per Richards 2015 BS2; default threshold AC≥5.
+        use crate::sa_extract::OmimData;
+        let input = make_input_omim(
+            Some(GnomadData {
+                all_ac: Some(1),
+                all_hc: Some(0),
+                all_af: Some(0.000001),
+                all_an: Some(1_000_000),
+                ..Default::default()
+            }),
+            Some(OmimData {
+                mim_number: None,
+                phenotypes: Some(vec!["dominant disorder".into()]),
+            }),
+        );
+        let r = evaluate_bs2(&input, &AcmgConfig::default());
+        assert!(!r.met, "AC=1 should not fire AD BS2; got {}", r.summary);
+        assert!(r.summary.contains("below BS2 threshold"));
+    }
+
+    #[test]
+    fn test_bs2_ad_gene_meets_threshold_fires() {
+        // AD gene + AC≥5 (default `bs2_ad_min_ac`) → BS2 fires.
+        use crate::sa_extract::OmimData;
+        let input = make_input_omim(
+            Some(GnomadData {
+                all_ac: Some(7),
+                all_hc: Some(0),
+                all_af: Some(7e-6),
+                all_an: Some(1_000_000),
+                ..Default::default()
+            }),
+            Some(OmimData {
+                mim_number: None,
+                phenotypes: Some(vec!["dominant disorder".into()]),
+            }),
+        );
+        let r = evaluate_bs2(&input, &AcmgConfig::default());
+        assert!(r.met, "AC=7 ≥ default 5 should fire AD BS2");
+        assert!(r.summary.contains("autosomal-dominant"));
+    }
+
+    #[test]
+    fn test_bs2_ad_gene_min_ac_configurable() {
+        // Config knob lets a stricter VCEP raise the threshold.
+        use crate::sa_extract::OmimData;
+        let mut cfg = AcmgConfig::default();
+        cfg.bs2_ad_min_ac = 20;
+        let input = make_input_omim(
+            Some(GnomadData {
+                all_ac: Some(7),
+                all_hc: Some(0),
+                ..Default::default()
+            }),
+            Some(OmimData {
+                mim_number: None,
+                phenotypes: Some(vec!["dominant disorder".into()]),
+            }),
+        );
+        let r = evaluate_bs2(&input, &cfg);
+        assert!(!r.met, "AC=7 < raised threshold 20 should not fire");
+    }
+
+    #[test]
+    fn test_bs2_ar_gene_homozygote_fires_regardless_of_ac() {
+        // Recessive: ≥1 hom is BS2 evidence even when AC is low.
+        use crate::sa_extract::OmimData;
+        let input = make_input_omim(
+            Some(GnomadData {
+                all_ac: Some(2),
+                all_hc: Some(1),
+                ..Default::default()
+            }),
+            Some(OmimData {
+                mim_number: None,
+                phenotypes: Some(vec!["recessive disorder".into()]),
+            }),
+        );
+        let r = evaluate_bs2(&input, &AcmgConfig::default());
+        assert!(r.met, "AR + 1 hom should fire BS2");
+        assert!(r.summary.contains("homozygous"));
+    }
+
+    // ── BS1 (max-pop AF) ──
+
+    #[test]
+    fn test_bs1_uses_max_pop_af_not_cohort_af() {
+        // Cohort AF below threshold but max-pop AF above: BS1 fires.
+        // (Pre-fix this would have used `all_af` and missed the
+        // single-population enrichment.)
+        let input = make_input(Some(GnomadData {
+            all_af: Some(0.001),
+            // 5 % in EAS — well above default BS1 threshold of 1 %.
+            eas_af: Some(0.05),
+            all_an: Some(2_000_000),
+            ..Default::default()
+        }));
+        let r = evaluate_bs1(&input, &AcmgConfig::default());
+        assert!(r.met, "max-pop AF should drive BS1, not cohort AF");
+        assert!(r.summary.contains("Max-pop"));
+    }
 }

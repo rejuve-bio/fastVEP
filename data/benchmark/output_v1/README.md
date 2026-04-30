@@ -1,6 +1,6 @@
 # v1 — Baseline run
 
-This is the **baseline run** preserved for the v1 → v6 comparison.
+This is the **baseline run** preserved for the v1 → v7 comparison.
 
 ## What was loaded
 
@@ -34,5 +34,5 @@ This is the **baseline run** preserved for the v1 → v6 comparison.
 - (No raw VCF.gz; the annotation phase was JSON output that has since been
   superseded. The matrix above was reconstructed from documentation.)
 
-For the v6 run with full SA stack and bug fixes, see `../output_v6/`.
+For the v7 run with full SA stack and bug fixes, see `../output_v7/`.
 For the per-version SA stack and code-fix delta, see `../RUN_VERSIONS.md`.
