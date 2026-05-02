@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use flate2::read::MultiGzDecoder;
-use fastvep_cache::annotation::{AnnotationProvider, AnnotationValue};
+use fastvep_cache::annotation::{AnnotationProvider, AnnotationValue, GeneAnnotationProvider};
 use fastvep_cache::fasta::FastaReader;
 use fastvep_cache::gff::parse_gff3;
 use fastvep_cache::info::CacheInfo;
@@ -281,22 +281,32 @@ pub fn run_annotate(config: AnnotateConfig) -> Result<()> {
         )
     };
     let mut writer = BufWriter::new(output_writer);
-    let emit_spliceai_from_sa = sa_providers.iter().any(|sa| sa.json_key() == "spliceAI");
-    let has_spliceai_header = vcf_parser
-        .header_lines()
+    let sa_json_keys: Vec<String> = sa_providers
         .iter()
-        .any(|line| line.starts_with("##INFO=<ID=SpliceAI,"));
+        .map(|sa| sa.json_key().to_string())
+        .collect();
+    let gene_json_keys: Vec<String> = gene_providers
+        .iter()
+        .map(|gp| gp.json_key().to_string())
+        .collect();
+    let owned_vcf_info_ids = output::vcf_owned_info_ids(&sa_json_keys, &gene_json_keys);
+    let generated_vcf_headers =
+        output::vcf_info_header_lines(&sa_json_keys, &gene_json_keys, output::DEFAULT_CSQ_FIELDS);
 
     // Write headers based on output format
     match config.output_format.as_str() {
         "vcf" => {
             // Pass through original VCF headers
             for header_line in vcf_parser.header_lines() {
-                if header_line.starts_with("#CHROM") {
-                    if emit_spliceai_from_sa && !has_spliceai_header {
-                        writeln!(writer, "{}", output::spliceai_header_line())?;
+                if let Some(info_id) = output::vcf_info_header_id(header_line) {
+                    if owned_vcf_info_ids.iter().any(|owned| *owned == info_id) {
+                        continue;
                     }
-                    writeln!(writer, "{}", output::csq_header_line(output::DEFAULT_CSQ_FIELDS))?;
+                }
+                if header_line.starts_with("#CHROM") {
+                    for generated in &generated_vcf_headers {
+                        writeln!(writer, "{}", generated)?;
+                    }
                 }
                 writeln!(writer, "{}", header_line)?;
             }
@@ -1320,8 +1330,7 @@ fn enrich_compound_het_batch(
 fn write_vcf_line(writer: &mut impl Write, vf: &VariationFeature) -> Result<()> {
     if let Some(ref fields) = vf.vcf_fields {
         let csq = output::format_csq(vf, output::DEFAULT_CSQ_FIELDS);
-        let spliceai = output::format_spliceai_info(vf);
-        let info = format_vcf_info(&fields.info, spliceai.as_deref(), &csq);
+        let info = output::format_vcf_info_fields(&fields.info, vf, &csq);
 
         write!(
             writer,
@@ -1337,33 +1346,6 @@ fn write_vcf_line(writer: &mut impl Write, vf: &VariationFeature) -> Result<()> 
     }
 
     Ok(())
-}
-
-fn format_vcf_info(original_info: &str, spliceai: Option<&str>, csq: &str) -> String {
-    let mut fields: Vec<String> = if original_info == "." || original_info.is_empty() {
-        Vec::new()
-    } else {
-        original_info
-            .split(';')
-            .filter(|field| {
-                spliceai.is_none() || (*field != "SpliceAI" && !field.starts_with("SpliceAI="))
-            })
-            .map(ToOwned::to_owned)
-            .collect()
-    };
-
-    if let Some(spliceai) = spliceai {
-        fields.push(format!("SpliceAI={}", spliceai));
-    }
-    if !csq.is_empty() {
-        fields.push(format!("CSQ={}", csq));
-    }
-
-    if fields.is_empty() {
-        ".".into()
-    } else {
-        fields.join(";")
-    }
 }
 
 

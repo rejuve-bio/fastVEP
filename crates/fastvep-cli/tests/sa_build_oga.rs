@@ -10,6 +10,7 @@ use std::fs::{self, File};
 use std::io::Write;
 
 const SPLICEAI_SOURCE_VCF: &str = include_str!("../fixtures/spliceai/spliceai-mini.vcf");
+const GNOMAD_SOURCE_VCF: &str = include_str!("../fixtures/spliceai/gnomad-mini.vcf");
 const INPUT_NO_SPLICEAI_INFO_VCF: &str =
     include_str!("../fixtures/spliceai/input-no-spliceai-info.vcf");
 const MINI_GFF3: &str = include_str!("../fixtures/spliceai/mini.gff3");
@@ -260,4 +261,124 @@ fn annotate_vcf_emits_spliceai_from_fastsa() {
         "VCF output should emit one SpliceAI value per matching alternate allele:\n{}",
         annotated
     );
+}
+
+#[test]
+fn annotate_vcf_replaces_existing_fastvep_info() {
+    let tmp = tempfile::tempdir().unwrap();
+    let spliceai_source = tmp.path().join("spliceai-mini.vcf");
+    let input_vcf = tmp.path().join("input-existing-info.vcf");
+    let gff3 = tmp.path().join("mini.gff3");
+    let output_base = tmp.path().join("spliceai-mini");
+    let output_vcf = tmp.path().join("annotated.vcf");
+    let transcript_cache = tmp.path().join("mini.fastvep.cache");
+
+    fs::write(&spliceai_source, SPLICEAI_SOURCE_VCF).unwrap();
+    fs::write(&gff3, MINI_GFF3).unwrap();
+    fs::write(
+        &input_vcf,
+        "\
+##fileformat=VCFv4.2
+##INFO=<ID=CSQ,Number=.,Type=String,Description=\"stale CSQ\">
+##INFO=<ID=SpliceAI,Number=.,Type=String,Description=\"stale SpliceAI\">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+1\t25000\t.\tA\tG\t.\t.\tDP=12;CSQ=old;SpliceAI=old
+",
+    )
+    .unwrap();
+
+    run_sa_build(
+        "spliceai",
+        spliceai_source.to_str().unwrap(),
+        output_base.to_str().unwrap(),
+        "GRCh38",
+    )
+    .unwrap();
+
+    run_annotate(AnnotateConfig {
+        input: input_vcf.to_string_lossy().into_owned(),
+        output: output_vcf.to_string_lossy().into_owned(),
+        gff3: Some(gff3.to_string_lossy().into_owned()),
+        fasta: None,
+        output_format: "vcf".into(),
+        pick: false,
+        hgvs: false,
+        distance: 0,
+        cache_dir: None,
+        transcript_cache: Some(transcript_cache.to_string_lossy().into_owned()),
+        sa_dir: Some(tmp.path().to_string_lossy().into_owned()),
+        acmg: false,
+        acmg_config: None,
+        proband: None,
+        mother: None,
+        father: None,
+    })
+    .unwrap();
+
+    let annotated = fs::read_to_string(output_vcf).unwrap();
+    assert_eq!(annotated.matches("##INFO=<ID=CSQ,").count(), 1, "{annotated}");
+    assert_eq!(
+        annotated.matches("##INFO=<ID=SpliceAI,").count(),
+        1,
+        "{annotated}"
+    );
+    assert!(annotated.contains("DP=12;SpliceAI=G|GENE1|0.01|0.00|0.85|0.00|5|-28|2|-13;CSQ=G|"));
+    assert!(!annotated.contains("CSQ=old"), "{annotated}");
+    assert!(!annotated.contains("SpliceAI=old"), "{annotated}");
+    assert!(!annotated.contains("stale CSQ"), "{annotated}");
+    assert!(!annotated.contains("stale SpliceAI"), "{annotated}");
+}
+
+#[test]
+fn annotate_vcf_emits_fastsa_projection_for_gnomad() {
+    let tmp = tempfile::tempdir().unwrap();
+    let gnomad_source = tmp.path().join("gnomad-mini.vcf");
+    let input_vcf = tmp.path().join("input.vcf");
+    let gff3 = tmp.path().join("mini.gff3");
+    let output_base = tmp.path().join("gnomad-mini");
+    let output_vcf = tmp.path().join("annotated.vcf");
+    let transcript_cache = tmp.path().join("mini.fastvep.cache");
+
+    fs::write(&gnomad_source, GNOMAD_SOURCE_VCF).unwrap();
+    fs::write(&input_vcf, INPUT_NO_SPLICEAI_INFO_VCF).unwrap();
+    fs::write(&gff3, MINI_GFF3).unwrap();
+
+    run_sa_build(
+        "gnomad",
+        gnomad_source.to_str().unwrap(),
+        output_base.to_str().unwrap(),
+        "GRCh38",
+    )
+    .unwrap();
+
+    run_annotate(AnnotateConfig {
+        input: input_vcf.to_string_lossy().into_owned(),
+        output: output_vcf.to_string_lossy().into_owned(),
+        gff3: Some(gff3.to_string_lossy().into_owned()),
+        fasta: None,
+        output_format: "vcf".into(),
+        pick: false,
+        hgvs: false,
+        distance: 0,
+        cache_dir: None,
+        transcript_cache: Some(transcript_cache.to_string_lossy().into_owned()),
+        sa_dir: Some(tmp.path().to_string_lossy().into_owned()),
+        acmg: false,
+        acmg_config: None,
+        proband: None,
+        mother: None,
+        father: None,
+    })
+    .unwrap();
+
+    let annotated = fs::read_to_string(output_vcf).unwrap();
+    assert!(
+        annotated.contains("##INFO=<ID=FV_GNOMAD,Number=.,Type=String"),
+        "{annotated}"
+    );
+    assert!(
+        annotated.contains("FV_GNOMAD=G|0.00012|12|100000|0|0.00021"),
+        "{annotated}"
+    );
+    assert!(!annotated.contains("FV_GNOMAD={"), "{annotated}");
 }

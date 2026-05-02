@@ -116,10 +116,18 @@ fn parse_spliceai_entry(
     let dp_dg: i32 = parts[8].parse().ok()?;
     let dp_dl: i32 = parts[9].parse().ok()?;
 
-    let json = format!(
-        r#"{{"gene":"{}","dsAg":{:.2},"dsAl":{:.2},"dsDg":{:.2},"dsDl":{:.2},"dpAg":{},"dpAl":{},"dpDg":{},"dpDl":{}}}"#,
-        gene, ds_ag, ds_al, ds_dg, ds_dl, dp_ag, dp_al, dp_dg, dp_dl
-    );
+    let json = serde_json::json!({
+        "gene": gene,
+        "dsAg": ds_ag,
+        "dsAl": ds_al,
+        "dsDg": ds_dg,
+        "dsDl": ds_dl,
+        "dpAg": dp_ag,
+        "dpAl": dp_al,
+        "dpDg": dp_dg,
+        "dpDl": dp_dl,
+    })
+    .to_string();
 
     Some(AnnotationRecord {
         chrom_idx,
@@ -159,16 +167,19 @@ mod tests {
 
         assert_eq!(records[0].position, 25000);
         assert_eq!(records[0].alt_allele, "G");
-        assert!(records[0].json.contains("GENE1"));
-        assert!(records[0].json.contains("\"dsDg\":0.85"));
+        let first: serde_json::Value = serde_json::from_str(&records[0].json).unwrap();
+        assert_eq!(first["gene"], "GENE1");
+        assert_eq!(first["dsDg"], 0.85);
 
         assert_eq!(records[1].position, 30000);
         assert_eq!(records[1].alt_allele, "T");
-        assert!(records[1].json.contains("\"dsDl\":0.92"));
+        let second: serde_json::Value = serde_json::from_str(&records[1].json).unwrap();
+        assert_eq!(second["dsDl"], 0.92);
 
         assert_eq!(records[2].position, 30000);
         assert_eq!(records[2].alt_allele, "A");
-        assert!(records[2].json.contains("\"dsAg\":0.50"));
+        let third: serde_json::Value = serde_json::from_str(&records[2].json).unwrap();
+        assert_eq!(third["dsAg"], 0.50);
     }
 
     #[test]
@@ -194,5 +205,22 @@ mod tests {
         assert_eq!(records[1].alt_allele, "T");
         assert_eq!(records[2].position, 30000);
         assert_eq!(records[2].alt_allele, "A");
+    }
+
+    #[test]
+    fn test_parse_spliceai_vcf_escapes_gene_for_json() {
+        let vcf = "\
+##fileformat=VCFv4.0
+##INFO=<ID=SpliceAI,Number=.,Type=String>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+1\t25000\t.\tA\tG\t.\t.\tSpliceAI=G|GENE\"1|0.01|0.00|0.85|0.00|5|-28|2|-13
+";
+        let mut chrom_map = HashMap::new();
+        chrom_map.insert("chr1".into(), 0u16);
+
+        let records = parse_spliceai_vcf(vcf.as_bytes(), &chrom_map).unwrap();
+        assert_eq!(records.len(), 1);
+        let value: serde_json::Value = serde_json::from_str(&records[0].json).unwrap();
+        assert_eq!(value["gene"], "GENE\"1");
     }
 }
