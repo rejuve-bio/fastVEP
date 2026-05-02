@@ -281,6 +281,11 @@ pub fn run_annotate(config: AnnotateConfig) -> Result<()> {
         )
     };
     let mut writer = BufWriter::new(output_writer);
+    let emit_spliceai_from_sa = sa_providers.iter().any(|sa| sa.json_key() == "spliceAI");
+    let has_spliceai_header = vcf_parser
+        .header_lines()
+        .iter()
+        .any(|line| line.starts_with("##INFO=<ID=SpliceAI,"));
 
     // Write headers based on output format
     match config.output_format.as_str() {
@@ -288,7 +293,9 @@ pub fn run_annotate(config: AnnotateConfig) -> Result<()> {
             // Pass through original VCF headers
             for header_line in vcf_parser.header_lines() {
                 if header_line.starts_with("#CHROM") {
-                    // Insert CSQ header before #CHROM
+                    if emit_spliceai_from_sa && !has_spliceai_header {
+                        writeln!(writer, "{}", output::spliceai_header_line())?;
+                    }
                     writeln!(writer, "{}", output::csq_header_line(output::DEFAULT_CSQ_FIELDS))?;
                 }
                 writeln!(writer, "{}", header_line)?;
@@ -1313,13 +1320,8 @@ fn enrich_compound_het_batch(
 fn write_vcf_line(writer: &mut impl Write, vf: &VariationFeature) -> Result<()> {
     if let Some(ref fields) = vf.vcf_fields {
         let csq = output::format_csq(vf, output::DEFAULT_CSQ_FIELDS);
-        let info = if fields.info == "." && !csq.is_empty() {
-            format!("CSQ={}", csq)
-        } else if !csq.is_empty() {
-            format!("{};CSQ={}", fields.info, csq)
-        } else {
-            fields.info.clone()
-        };
+        let spliceai = output::format_spliceai_info(vf);
+        let info = format_vcf_info(&fields.info, spliceai.as_deref(), &csq);
 
         write!(
             writer,
@@ -1335,6 +1337,33 @@ fn write_vcf_line(writer: &mut impl Write, vf: &VariationFeature) -> Result<()> 
     }
 
     Ok(())
+}
+
+fn format_vcf_info(original_info: &str, spliceai: Option<&str>, csq: &str) -> String {
+    let mut fields: Vec<String> = if original_info == "." || original_info.is_empty() {
+        Vec::new()
+    } else {
+        original_info
+            .split(';')
+            .filter(|field| {
+                spliceai.is_none() || (*field != "SpliceAI" && !field.starts_with("SpliceAI="))
+            })
+            .map(ToOwned::to_owned)
+            .collect()
+    };
+
+    if let Some(spliceai) = spliceai {
+        fields.push(format!("SpliceAI={}", spliceai));
+    }
+    if !csq.is_empty() {
+        fields.push(format!("CSQ={}", csq));
+    }
+
+    if fields.is_empty() {
+        ".".into()
+    } else {
+        fields.join(";")
+    }
 }
 
 

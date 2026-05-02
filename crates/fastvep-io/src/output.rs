@@ -1,5 +1,6 @@
 use crate::variant::{AlleleAnnotation, TranscriptVariation, VariationFeature};
 use fastvep_core::Consequence;
+use serde_json::Value;
 use std::fmt::Write as FmtWrite;
 
 /// Format a VCF CSQ INFO field value from a VariationFeature.
@@ -297,6 +298,76 @@ pub fn csq_header_line(fields: &[&str]) -> String {
         "##INFO=<ID=CSQ,Number=.,Type=String,Description=\"Consequence annotations from fastVEP. Format: {}\">",
         fields.join("|")
     )
+}
+
+/// Generate the VCF INFO header line for SpliceAI annotations emitted from fastSA.
+pub fn spliceai_header_line() -> &'static str {
+    "##INFO=<ID=SpliceAI,Number=.,Type=String,Description=\"SpliceAI annotations. Format: ALLELE|SYMBOL|DS_AG|DS_AL|DS_DG|DS_DL|DP_AG|DP_AL|DP_DG|DP_DL\">"
+}
+
+/// Format fastSA SpliceAI annotations as a VCF-compatible INFO field value.
+pub fn format_spliceai_info(vf: &VariationFeature) -> Option<String> {
+    let mut values = Vec::new();
+
+    for tv in &vf.transcript_variations {
+        for aa in &tv.allele_annotations {
+            for (key, json_str) in &aa.supplementary {
+                if key != "spliceAI" {
+                    continue;
+                }
+                if let Some(value) = format_spliceai_entry(&aa.allele.to_string(), json_str) {
+                    if !values.contains(&value) {
+                        values.push(value);
+                    }
+                }
+            }
+        }
+    }
+
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.join(","))
+    }
+}
+
+fn format_spliceai_entry(allele: &str, json_str: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(json_str).ok()?;
+    let obj = value.as_object()?;
+    let gene = obj.get("gene")?.as_str()?;
+
+    Some(format!(
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        allele,
+        escape_spliceai_field(gene),
+        format_spliceai_float(obj.get("dsAg")?)?,
+        format_spliceai_float(obj.get("dsAl")?)?,
+        format_spliceai_float(obj.get("dsDg")?)?,
+        format_spliceai_float(obj.get("dsDl")?)?,
+        format_spliceai_int(obj.get("dpAg")?)?,
+        format_spliceai_int(obj.get("dpAl")?)?,
+        format_spliceai_int(obj.get("dpDg")?)?,
+        format_spliceai_int(obj.get("dpDl")?)?,
+    ))
+}
+
+fn format_spliceai_float(value: &Value) -> Option<String> {
+    value.as_f64().map(|v| format!("{:.2}", v))
+}
+
+fn format_spliceai_int(value: &Value) -> Option<String> {
+    if let Some(v) = value.as_i64() {
+        Some(v.to_string())
+    } else {
+        value.as_f64().map(|v| format!("{:.0}", v))
+    }
+}
+
+fn escape_spliceai_field(value: &str) -> String {
+    value
+        .replace([';', '\t', '\n', '\r'], "_")
+        .replace(',', "&")
+        .replace('|', "&")
 }
 
 /// Format a VariationFeature as a tab-delimited VEP output line.
