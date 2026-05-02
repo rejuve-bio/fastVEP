@@ -101,6 +101,8 @@ git diff --check
 ```
 
 - [x] Validate a generated sample VCF with `pysam.VariantFile`.
+- [x] Validate a larger real SpliceAI SNV+indel subset from indexed masked hg38 source VCFs; confirm `SpliceAI` is generated for all 400 records from fastSA, not passed through from input.
+- [x] Add an indel regression proving allele-matched fastSA uses uploaded VCF alleles while positional fastSA keeps normalized coordinates.
 - [x] Commit and push:
 
 ```bash

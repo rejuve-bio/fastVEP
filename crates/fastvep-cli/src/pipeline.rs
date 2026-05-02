@@ -394,10 +394,15 @@ pub fn run_annotate(config: AnnotateConfig) -> Result<()> {
             // Collect all positions in this batch, grouped by chromosome
             let mut chrom_positions: HashMap<&str, Vec<u64>> = HashMap::new();
             for (vf, _) in &batch {
-                chrom_positions
+                let positions = chrom_positions
                     .entry(&vf.position.chromosome)
-                    .or_default()
-                    .push(vf.position.start);
+                    .or_default();
+                positions.push(vf.position.start);
+                if let Some(vcf) = &vf.vcf_fields {
+                    if vcf.pos != vf.position.start {
+                        positions.push(vcf.pos);
+                    }
+                }
             }
             for sa in &sa_providers {
                 for (chrom, positions) in &chrom_positions {
@@ -921,13 +926,27 @@ pub fn run_annotate(config: AnnotateConfig) -> Result<()> {
             // Supplementary annotation: query SA providers for each allele
             if !sa_providers.is_empty() {
                 let chrom = &vf.position.chromosome;
+                let sa_queries = supplementary_query_alleles(vf);
                 for tv in &mut vf.transcript_variations {
                     for aa in &mut tv.allele_annotations {
-                        let alt_str = aa.allele.to_string();
-                        let ref_str = vf.ref_allele.to_string();
+                        let allele_key = aa.allele.to_string();
+                        let (query_pos, ref_str, alt_str) = sa_queries
+                            .iter()
+                            .find(|(allele, _, _, _)| allele == &allele_key)
+                            .map(|(_, pos, ref_allele, alt_allele)| {
+                                (*pos, ref_allele.clone(), alt_allele.clone())
+                            })
+                            .unwrap_or_else(|| {
+                                (vf.position.start, vf.ref_allele.to_string(), allele_key)
+                            });
                         for sa in &sa_providers {
+                            let (sa_pos, sa_ref, sa_alt) = if sa.metadata().match_by_allele {
+                                (query_pos, ref_str.as_str(), alt_str.as_str())
+                            } else {
+                                (vf.position.start, "", "")
+                            };
                             if let Ok(Some(ann)) =
-                                sa.annotate_position(chrom, vf.position.start, &ref_str, &alt_str)
+                                sa.annotate_position(chrom, sa_pos, sa_ref, sa_alt)
                             {
                                 let json_str = match ann {
                                     AnnotationValue::Json(j) => j,
@@ -1325,6 +1344,42 @@ fn enrich_compound_het_batch(
                 .acmg_classification = serde_json::to_value(&result).ok();
         }
     }
+}
+
+fn supplementary_query_alleles(vf: &VariationFeature) -> Vec<(String, u64, String, String)> {
+    if let Some(vcf) = &vf.vcf_fields {
+        let uploaded_alts: Vec<&str> = vcf.alt.split(',').collect();
+        return vf
+            .alt_alleles
+            .iter()
+            .enumerate()
+            .map(|(idx, allele)| {
+                let allele_string = allele.to_string();
+                (
+                    allele_string.clone(),
+                    vcf.pos,
+                    vcf.ref_allele.clone(),
+                    uploaded_alts
+                        .get(idx)
+                        .copied()
+                        .unwrap_or(&allele_string)
+                        .to_string(),
+                )
+            })
+            .collect();
+    }
+
+    vf.alt_alleles
+        .iter()
+        .map(|allele| {
+            (
+                allele.to_string(),
+                vf.position.start,
+                vf.ref_allele.to_string(),
+                allele.to_string(),
+            )
+        })
+        .collect()
 }
 
 fn write_vcf_line(writer: &mut impl Write, vf: &VariationFeature) -> Result<()> {

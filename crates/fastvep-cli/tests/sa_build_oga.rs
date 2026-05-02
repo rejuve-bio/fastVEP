@@ -10,6 +10,8 @@ use std::fs::{self, File};
 use std::io::Write;
 
 const SPLICEAI_SOURCE_VCF: &str = include_str!("../fixtures/spliceai/spliceai-mini.vcf");
+const SPLICEAI_INDEL_SOURCE_VCF: &str =
+    include_str!("../fixtures/spliceai/spliceai-indel-mini.vcf");
 const GNOMAD_SOURCE_VCF: &str = include_str!("../fixtures/spliceai/gnomad-mini.vcf");
 const INPUT_NO_SPLICEAI_INFO_VCF: &str =
     include_str!("../fixtures/spliceai/input-no-spliceai-info.vcf");
@@ -261,6 +263,93 @@ fn annotate_vcf_emits_spliceai_from_fastsa() {
         "VCF output should emit one SpliceAI value per matching alternate allele:\n{}",
         annotated
     );
+}
+
+#[test]
+fn annotate_vcf_emits_spliceai_for_uploaded_indel_alleles() {
+    let tmp = tempfile::tempdir().unwrap();
+    let spliceai_source = tmp.path().join("spliceai-indel-mini.vcf");
+    let input_vcf = tmp.path().join("input-no-spliceai-info.vcf");
+    let gff3 = tmp.path().join("mini.gff3");
+    let output_base = tmp.path().join("spliceai-indel-mini");
+    let phylop_source = tmp.path().join("phylop-indel.tsv");
+    let phylop_output_base = tmp.path().join("phylop-indel");
+    let output_vcf = tmp.path().join("annotated.vcf");
+    let transcript_cache = tmp.path().join("mini.fastvep.cache");
+
+    fs::write(&spliceai_source, SPLICEAI_INDEL_SOURCE_VCF).unwrap();
+    fs::write(&gff3, MINI_GFF3).unwrap();
+    fs::write(
+        &phylop_source,
+        "\
+chr1\t26001\t3.14
+chr1\t26011\t2.71
+",
+    )
+    .unwrap();
+    fs::write(
+        &input_vcf,
+        "\
+##fileformat=VCFv4.2
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+1\t26000\t.\tGA\tG\t.\t.\t.
+1\t26010\t.\tG\tGA\t.\t.\t.
+",
+    )
+    .unwrap();
+
+    run_sa_build(
+        "spliceai",
+        spliceai_source.to_str().unwrap(),
+        output_base.to_str().unwrap(),
+        "GRCh38",
+    )
+    .unwrap();
+    run_sa_build(
+        "phylop",
+        phylop_source.to_str().unwrap(),
+        phylop_output_base.to_str().unwrap(),
+        "GRCh38",
+    )
+    .unwrap();
+
+    run_annotate(AnnotateConfig {
+        input: input_vcf.to_string_lossy().into_owned(),
+        output: output_vcf.to_string_lossy().into_owned(),
+        gff3: Some(gff3.to_string_lossy().into_owned()),
+        fasta: None,
+        output_format: "vcf".into(),
+        pick: false,
+        hgvs: false,
+        distance: 0,
+        cache_dir: None,
+        transcript_cache: Some(transcript_cache.to_string_lossy().into_owned()),
+        sa_dir: Some(tmp.path().to_string_lossy().into_owned()),
+        acmg: false,
+        acmg_config: None,
+        proband: None,
+        mother: None,
+        father: None,
+    })
+    .unwrap();
+
+    let annotated = fs::read_to_string(output_vcf).unwrap();
+    assert!(
+        annotated.contains("SpliceAI=G|GENE1|0.10|0.00|0.00|0.00|4|7|27|17"),
+        "deletion should use uploaded ALT allele from SpliceAI source:\n{}",
+        annotated
+    );
+    assert!(
+        annotated.contains("SpliceAI=GA|GENE1|0.00|0.20|0.00|0.00|1|7|27|17"),
+        "insertion should use uploaded ALT allele from SpliceAI source:\n{}",
+        annotated
+    );
+    assert!(
+        annotated.contains("FV_PHYLOP=G|3.14"),
+        "positional scores should still query fastVEP's normalized indel position:\n{}",
+        annotated
+    );
+    assert!(!annotated.contains("SpliceAI=-|"), "{annotated}");
 }
 
 #[test]

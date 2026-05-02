@@ -1,5 +1,5 @@
 use crate::variant::{AlleleAnnotation, TranscriptVariation, VariationFeature};
-use fastvep_core::Consequence;
+use fastvep_core::{Allele, Consequence};
 use serde_json::Value;
 use std::fmt::Write as FmtWrite;
 
@@ -609,11 +609,12 @@ fn format_spliceai_projection(vf: &VariationFeature) -> Option<String> {
 
     for tv in &vf.transcript_variations {
         for aa in &tv.allele_annotations {
+            let allele = uploaded_allele_for_annotation(vf, &aa.allele);
             for (key, json_str) in &aa.supplementary {
                 if key != "spliceAI" {
                     continue;
                 }
-                if let Some(value) = format_spliceai_entry(&aa.allele.to_string(), json_str) {
+                if let Some(value) = format_spliceai_entry(&allele, json_str) {
                     if !values.contains(&value) {
                         values.push(value);
                     }
@@ -669,7 +670,7 @@ fn format_allele_projection(vf: &VariationFeature, spec: &VcfProjectionSpec) -> 
     let mut values = Vec::new();
     for tv in &vf.transcript_variations {
         for aa in &tv.allele_annotations {
-            let allele = aa.allele.to_string();
+            let allele = uploaded_allele_for_annotation(vf, &aa.allele);
             for (key, json_str) in &aa.supplementary {
                 if key != spec.json_key {
                     continue;
@@ -828,6 +829,21 @@ fn escape_vcf_subfield(value: &str) -> String {
         }
     }
     escaped
+}
+
+fn uploaded_allele_for_annotation(vf: &VariationFeature, allele: &Allele) -> String {
+    let allele_string = allele.to_string();
+    let Some(vcf) = &vf.vcf_fields else {
+        return allele_string;
+    };
+
+    let uploaded_alts: Vec<&str> = vcf.alt.split(',').collect();
+    vf.alt_alleles
+        .iter()
+        .position(|alt| alt == allele)
+        .and_then(|idx| uploaded_alts.get(idx).copied())
+        .unwrap_or(&allele_string)
+        .to_string()
 }
 
 /// Format a VariationFeature as a tab-delimited VEP output line.
@@ -1401,5 +1417,43 @@ mod tests {
         assert!(!info.contains("CSQ=old"));
         assert!(!info.contains("SpliceAI=old"));
         assert!(!info.contains("FV_CLINVAR=old"));
+    }
+
+    #[test]
+    fn vcf_projection_uses_uploaded_indel_alt_allele() {
+        let mut vf = projection_test_variant();
+        vf.position.start = 26001;
+        vf.position.end = 26001;
+        vf.ref_allele = Allele::from_str("A");
+        vf.alt_alleles = vec![Allele::Deletion];
+        vf.allele_string = "A/-".into();
+        vf.vcf_fields = Some(crate::variant::VcfFields {
+            chrom: "1".into(),
+            pos: 26000,
+            id: ".".into(),
+            ref_allele: "GA".into(),
+            alt: "G".into(),
+            qual: ".".into(),
+            filter: ".".into(),
+            info: ".".into(),
+            rest: Vec::new(),
+        });
+        let aa = &mut vf.transcript_variations[0].allele_annotations[0];
+        aa.allele = Allele::Deletion;
+        aa.supplementary = vec![(
+            "spliceAI".into(),
+            r#"{"gene":"GENE1","dsAg":0.1,"dsAl":0.0,"dsDg":0.0,"dsDl":0.0,"dpAg":4,"dpAl":7,"dpDg":27,"dpDl":17}"#.into(),
+        )];
+
+        let info = format_supplementary_vcf_info(&vf)
+            .into_iter()
+            .map(|(id, value)| format!("{id}={value}"))
+            .collect::<Vec<_>>()
+            .join(";");
+        assert!(
+            info.contains("SpliceAI=G|GENE1|0.10|0.00|0.00|0.00|4|7|27|17"),
+            "{info}"
+        );
+        assert!(!info.contains("SpliceAI=-|"), "{info}");
     }
 }

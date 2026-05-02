@@ -39,6 +39,8 @@ For fastVEP-specific supplementary projections, use declared `FV_*` INFO fields.
 
 Every emitted field must have a matching `##INFO=<ID=...>` line. Values must not contain raw JSON braces, quotes, semicolons, tabs, newlines, unescaped spaces, or unescaped commas inside a subfield.
 
+For VCF-backed allele-specific fastSA sources, lookups and emitted `ALLELE` subfields use the uploaded VCF POS/REF/ALT, not fastVEP's minimized internal allele representation. This is required for indels, where the internal allele may be `-` or a stripped insertion sequence while the source `.osa` is keyed by the original VCF record. Positional, non-allele-matched sources continue to query fastVEP's normalized variant coordinate.
+
 ## Source Coverage
 
 Variant/allele-level `.osa` sources:
@@ -81,6 +83,7 @@ Tests must cover:
 - Special-character escaping in subfields.
 - SpliceAI source JSON construction with special characters in gene symbols.
 - End-to-end CLI output remains parseable by a VCF parser for representative fixtures.
+- Indel fixtures prove allele-matched SpliceAI lookup and VCF `ALLELE` output use uploaded VCF alleles while positional scores still use normalized indel coordinates.
 
 ## Non-Goals
 
