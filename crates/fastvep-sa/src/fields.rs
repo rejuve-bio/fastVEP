@@ -113,9 +113,16 @@ impl Field {
     #[inline]
     pub fn encode_int(&self, value: i64) -> u32 {
         if self.zigzag {
-            let clamped = value.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-            let encoded = crate::zigzag::encode(clamped);
-            if encoded == self.missing_value { encoded.wrapping_sub(1) } else { encoded }
+            // When the missing sentinel is u32::MAX, zigzag-encoding i32::MIN
+            // would collide with that sentinel. Clamp away from i32::MIN so we
+            // never need to remap the encoded value onto another valid extreme.
+            let min = if self.missing_value == u32::MAX {
+                (i32::MIN as i64) + 1
+            } else {
+                i32::MIN as i64
+            };
+            let clamped = value.clamp(min, i32::MAX as i64) as i32;
+            crate::zigzag::encode(clamped)
         } else {
             // Treat negatives or overflow as missing rather than silently wrapping.
             if value < 0 || value > u32::MAX as i64 {
