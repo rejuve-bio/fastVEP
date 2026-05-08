@@ -157,10 +157,12 @@ impl AnnotationProvider for SaReader {
     }
 
     fn preload(&self, chrom: &str, positions: &[u64]) -> Result<()> {
-        // Use iterator min/max to avoid duplicate scans and panic-prone unwraps.
-        let (min_pos_u64, max_pos_u64) = match (positions.iter().min(), positions.iter().max()) {
-            (Some(&mn), Some(&mx)) => (mn, mx),
-            _ => return Ok(()),
+        // Compute min/max in a single pass and avoid panic-prone unwraps.
+        let (min_pos_u64, max_pos_u64) = match positions.split_first() {
+            Some((&first, rest)) => rest
+                .iter()
+                .fold((first, first), |(mn, mx), &p| (mn.min(p), mx.max(p))),
+            None => return Ok(()),
         };
 
         // If the chromosome isn't in our standard map, skip caching: the

@@ -6,6 +6,7 @@
 
 use crate::common::ZSTD_LEVEL;
 use anyhow::Result;
+use std::io::Read;
 
 /// Hard cap on block decompressed size (256 MiB). Defends against zstd bombs
 /// in maliciously crafted .osa files. Real blocks are typically <= 8 MiB.
@@ -101,12 +102,17 @@ impl SaBlock {
 
     /// Decompress and deserialize a block from compressed bytes.
     pub fn decompress(data: &[u8]) -> Result<Vec<BlockEntry>> {
-        // Cap decompressed size to defend against compression bombs.
-        let raw = zstd::decode_all(data)?;
+        // Streaming-decompress with a hard cap so a zstd bomb can never force
+        // an oversized allocation. `decode_all` would have to materialize the
+        // entire output before we could measure it.
+        let mut decoder = zstd::stream::Decoder::new(data)?;
+        let mut raw = Vec::new();
+        (&mut decoder)
+            .take(MAX_BLOCK_DECOMPRESSED as u64 + 1)
+            .read_to_end(&mut raw)?;
         if raw.len() > MAX_BLOCK_DECOMPRESSED {
             anyhow::bail!(
-                "Decompressed block too large: {} bytes (limit {})",
-                raw.len(),
+                "Decompressed block exceeds limit ({} bytes)",
                 MAX_BLOCK_DECOMPRESSED
             );
         }

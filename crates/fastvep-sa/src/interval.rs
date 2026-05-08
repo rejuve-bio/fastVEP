@@ -120,14 +120,17 @@ impl IntervalIndex {
         let mut len_bytes = [0u8; 8];
         reader.read_exact(&mut len_bytes)?;
         let len_u64 = u64::from_le_bytes(len_bytes);
-        if len_u64 > MAX_INDEX_PAYLOAD as u64 {
+        if len_u64 > MAX_INDEX_PAYLOAD {
             anyhow::bail!(
                 "OSI payload size {} exceeds limit {}",
                 len_u64,
                 MAX_INDEX_PAYLOAD
             );
         }
-        let mut data = vec![0u8; len_u64 as usize];
+        let len: usize = len_u64
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("OSI payload size {} exceeds usize", len_u64))?;
+        let mut data = vec![0u8; len];
         reader.read_exact(&mut data)?;
         let index: IntervalIndex = bincode::deserialize(&data)?;
         Ok(index)
