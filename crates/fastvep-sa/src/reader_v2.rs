@@ -239,8 +239,9 @@ impl Osa2Reader {
         self.load_chunk(chrom, chunk_id)?;
 
         // Lookup must happen with the cache lock held: `LruCache::get`
-        // mutates LRU order. We do the binary search on the chunk while
-        // holding the lock, then drop it before reconstructing JSON.
+        // mutates LRU order, and the returned `chunk` reference is borrowed
+        // from the cache entry. That means both the search and any later
+        // `reconstruct_json(...)` call below still execute while the lock is held.
         let mut cache = self
             .chunk_cache
             .lock()
