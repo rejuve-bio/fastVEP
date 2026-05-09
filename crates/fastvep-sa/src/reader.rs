@@ -165,6 +165,9 @@ impl AnnotationProvider for SaReader {
             None => return Ok(()),
         };
 
+        let cache = unsafe { &mut *self.preloaded.get() };
+        cache.clear();
+
         // If the chromosome isn't in our standard map, skip caching: the
         // cache key would collide for any other unknown chromosome.
         let chrom_idx = match self.chrom_map.get(chrom) {
@@ -174,9 +177,6 @@ impl AnnotationProvider for SaReader {
                 return Ok(());
             }
         };
-
-        let cache = unsafe { &mut *self.preloaded.get() };
-        cache.clear();
 
         // u32 positions are required by the on-disk format; bail loudly
         // rather than silently truncating.

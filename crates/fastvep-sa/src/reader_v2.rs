@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Hard cap on a per-chunk zstd-decompressed JSON blob (256 MiB). Defends
 /// against zstd bombs in maliciously crafted .osa2 files.
@@ -41,7 +41,7 @@ pub struct Osa2Reader {
     /// Categorical string lookup tables per field.
     string_tables: Vec<Vec<String>>,
     /// LRU cache of loaded chunks, keyed by "chrom/chunk_id".
-    chunk_cache: Mutex<LruCache<String, Chunk>>,
+    chunk_cache: Mutex<LruCache<String, Arc<Chunk>>>,
 }
 
 impl Osa2Reader {
@@ -220,7 +220,7 @@ impl Osa2Reader {
         // Build the chunk without holding the lock to avoid blocking readers
         // during disk I/O. Two concurrent loads of the same chunk will each
         // build a chunk; the LRU keeps only the last `put`, which is acceptable.
-        let chunk = self.build_chunk(chrom, chunk_id)?;
+        let chunk = Arc::new(self.build_chunk(chrom, chunk_id)?);
 
         let mut cache = self
             .chunk_cache
@@ -238,17 +238,17 @@ impl Osa2Reader {
         // Ensure chunk is loaded
         self.load_chunk(chrom, chunk_id)?;
 
-        // Lookup must happen with the cache lock held: `LruCache::get`
-        // mutates LRU order, and the returned `chunk` reference is borrowed
-        // from the cache entry. That means both the search and any later
-        // `reconstruct_json(...)` call below still execute while the lock is held.
-        let mut cache = self
-            .chunk_cache
-            .lock()
-            .map_err(|_| anyhow::anyhow!("chunk_cache mutex poisoned"))?;
-        let chunk = match cache.get(&cache_key) {
-            Some(c) => c,
-            None => return Ok(None),
+        // `LruCache::get` mutates recency order, so lock only for lookup and
+        // clone an `Arc` to release the mutex before search/reconstruction.
+        let chunk = {
+            let mut cache = self
+                .chunk_cache
+                .lock()
+                .map_err(|_| anyhow::anyhow!("chunk_cache mutex poisoned"))?;
+            match cache.get(&cache_key) {
+                Some(c) => Arc::clone(c),
+                None => return Ok(None),
+            }
         };
 
         if chunk.is_empty() {
@@ -299,7 +299,10 @@ impl AnnotationProvider for Osa2Reader {
         let ref_bytes = ref_allele.as_bytes();
         let alt_bytes = alt_allele.as_bytes();
 
-        match self.query(chrom, pos as u32, ref_bytes, alt_bytes)? {
+        let pos: u32 = pos
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Position {} exceeds u32::MAX", pos))?;
+        match self.query(chrom, pos, ref_bytes, alt_bytes)? {
             Some(json) => {
                 if self.sa_metadata.is_positional {
                     Ok(Some(AnnotationValue::Positional(json)))
