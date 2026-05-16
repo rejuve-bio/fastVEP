@@ -1,0 +1,32 @@
+services:
+  fastvep-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      FASTVEP_PORT: "8080"
+      FASTVEP_BIND: "0.0.0.0"
+      FASTVEP_DATA_DIR: /data
+    volumes:
+      - ${DATA_DIR:-/opt/fastvep/data}:/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      FASTVEP_URL: "http://fastvep-web:8080"
+      CORS_ORIGINS: "${CORS_ORIGINS:-*}"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      fastvep-web:
+        condition: service_healthy
+    restart: unless-stopped
