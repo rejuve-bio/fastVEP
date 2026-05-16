@@ -55,3 +55,38 @@ def test_variants_list_with_multiple():
         ]
     )
     assert len(req.variants) == 2
+
+
+def test_pos_zero_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr1", pos=0, ref="A", alt="G")
+
+
+def test_pos_negative_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr1", pos=-1, ref="A", alt="G")
+
+
+def test_empty_ref_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr1", pos=100, ref="", alt="G")
+
+
+def test_empty_alt_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr1", pos=100, ref="A", alt="")
+
+
+def test_tab_in_chr_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr\t1", pos=100, ref="A", alt="G")
+
+
+def test_newline_in_ref_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr1", pos=100, ref="A\nG", alt="G")
+
+
+def test_tab_in_alt_raises():
+    with pytest.raises(ValidationError):
+        Variant(chr="chr1", pos=100, ref="A", alt="G\tT")

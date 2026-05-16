@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 from typing import Any
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+_VCF_DELIMITERS = ("\t", "\n", "\r")
 
 
 class Variant(BaseModel):
-    chr: str
-    pos: int
-    ref: str
-    alt: str
+    chr: str = Field(min_length=1)
+    pos: int = Field(gt=0)
+    ref: str = Field(min_length=1)
+    alt: str = Field(min_length=1)
+
+    @field_validator("chr", "ref", "alt")
+    @classmethod
+    def reject_vcf_delimiters(cls, value: str) -> str:
+        if any(d in value for d in _VCF_DELIMITERS):
+            raise ValueError("must not contain tab or newline characters")
+        return value
 
 
 class AnnotateRequest(BaseModel):
