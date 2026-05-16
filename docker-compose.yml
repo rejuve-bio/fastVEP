@@ -1,0 +1,35 @@
+services:
+  fastvep-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      FASTVEP_PORT: "8080"
+      FASTVEP_BIND: "0.0.0.0"
+      FASTVEP_DATA_DIR: /data
+      FASTVEP_GFF3: "${FASTVEP_GFF3:-/data/hg38_ensembl_115/Homo_sapiens.GRCh38.115.gff3}"
+      FASTVEP_FASTA: "${FASTVEP_FASTA:-/data/hg38_ensembl_115/Homo_sapiens.GRCh38.dna.primary_assembly.fa}"
+      FASTVEP_SA_DIR: "${FASTVEP_SA_DIR:-/data/hg38_ensembl_115/sa}"
+    volumes:
+      - ${DATA_DIR:-/opt/fastvep/data}:/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/status | grep -Eq '\"transcripts\"[[:space:]]*:[[:space:]]*[1-9][0-9]*'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      FASTVEP_URL: "http://fastvep-web:8080"
+      CORS_ORIGINS: "${CORS_ORIGINS:-*}"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      fastvep-web:
+        condition: service_healthy
+    restart: unless-stopped

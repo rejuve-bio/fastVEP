@@ -15,10 +15,12 @@
 set -euo pipefail
 
 FASTVEP_BIN="${FASTVEP_BIN:-/root/fastVEP/target/release}"
-DATA_DIR="/opt/fastvep/data"
-BIN_DIR="/opt/fastvep/bin"
+DATA_DIR="${DATA_DIR:-/opt/fastvep/data}"
+BIN_DIR="${BIN_DIR:-/opt/fastvep/bin}"
 
 echo "=== fastVEP Full Research Deployment ==="
+echo "Data directory : ${HOST_DATA_DIR:-$DATA_DIR}"
+echo "Bin directory  : $BIN_DIR"
 echo ""
 
 # --- Check disk space ---
@@ -27,10 +29,14 @@ echo "Available disk space: ${AVAIL_GB}GB"
 if [ "$AVAIL_GB" -lt 60 ]; then
     echo "WARNING: You have less than 60GB free. gnomAD alone needs ~40GB temp space."
     echo "Consider upgrading to CCX33 (160GB) or attaching a Hetzner Volume."
-    read -p "Continue anyway? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    if [ "${FASTVEP_YES:-0}" = "1" ]; then
+        echo "FASTVEP_YES=1 set — continuing without prompt."
+    else
+        read -p "Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
     fi
 fi
 
@@ -53,12 +59,12 @@ mkdir -p "$DATA_DIR/hg38_ensembl_115/sa"
 cd "$DATA_DIR/hg38_ensembl_115"
 
 if [ ! -f Homo_sapiens.GRCh38.115.gff3 ]; then
-    wget -q --show-progress https://ftp.ensembl.org/pub/release-115/gff3/homo_sapiens/Homo_sapiens.GRCh38.115.gff3.gz
+    wget -c -q --show-progress https://ftp.ensembl.org/pub/release-115/gff3/homo_sapiens/Homo_sapiens.GRCh38.115.gff3.gz
     gunzip Homo_sapiens.GRCh38.115.gff3.gz
 fi
 
 if [ ! -f Homo_sapiens.GRCh38.dna.primary_assembly.fa ]; then
-    wget -q --show-progress https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+    wget -c -q --show-progress https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
     gunzip Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
     samtools faidx Homo_sapiens.GRCh38.dna.primary_assembly.fa
 fi
@@ -68,14 +74,14 @@ cd "$DATA_DIR/hg38_ensembl_115/sa"
 
 echo "[3/8] Building ClinVar (GRCh38)..."
 if [ ! -f clinvar.osa ]; then
-    wget -q --show-progress https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+    wget -c -q --show-progress https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
     "$BIN_DIR/fastvep" sa-build --source clinvar -i clinvar.vcf.gz -o clinvar --assembly GRCh38
     rm -f clinvar.vcf.gz
 fi
 
 echo "[4/8] Building dbSNP (GRCh38, ~20GB download → ~5GB .osa)..."
 if [ ! -f dbsnp.osa ]; then
-    wget -q --show-progress https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz
+    wget -c -q --show-progress https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz
     "$BIN_DIR/fastvep" sa-build --source dbsnp -i GCF_000001405.40.gz -o dbsnp --assembly GRCh38
     # Clean up the 20GB download immediately
     rm -f GCF_000001405.40.gz
@@ -87,7 +93,7 @@ if [ ! -f gnomad.osa ]; then
     for chr in {1..22} X; do
         VCF="gnomad.genomes.v4.1.sites.chr${chr}.vcf.bgz"
         echo "  → Downloading chr${chr}..."
-        wget -q --show-progress \
+        wget -c -q --show-progress \
             "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes/${VCF}"
         echo "  → Indexing chr${chr}..."
         "$BIN_DIR/fastvep" sa-build --source gnomad -i "$VCF" -o gnomad --assembly GRCh38
@@ -103,12 +109,12 @@ mkdir -p "$DATA_DIR/hg19_ensembl_113/sa"
 cd "$DATA_DIR/hg19_ensembl_113"
 
 if [ ! -f Homo_sapiens.GRCh37.87.gff3 ]; then
-    wget -q --show-progress https://ftp.ensembl.org/pub/grch37/release-113/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
+    wget -c -q --show-progress https://ftp.ensembl.org/pub/grch37/release-113/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
     gunzip Homo_sapiens.GRCh37.87.gff3.gz
 fi
 
 if [ ! -f Homo_sapiens.GRCh37.dna.primary_assembly.fa ]; then
-    wget -q --show-progress https://ftp.ensembl.org/pub/grch37/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.dna.primary_assembly.fa.gz
+    wget -c -q --show-progress https://ftp.ensembl.org/pub/grch37/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.dna.primary_assembly.fa.gz
     gunzip Homo_sapiens.GRCh37.dna.primary_assembly.fa.gz
     samtools faidx Homo_sapiens.GRCh37.dna.primary_assembly.fa
 fi
@@ -117,7 +123,7 @@ fi
 cd "$DATA_DIR/hg19_ensembl_113/sa"
 echo "  → Building ClinVar (GRCh37)..."
 if [ ! -f clinvar.osa ]; then
-    wget -q --show-progress https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/clinvar.vcf.gz
+    wget -c -q --show-progress https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/clinvar.vcf.gz
     "$BIN_DIR/fastvep" sa-build --source clinvar -i clinvar.vcf.gz -o clinvar --assembly GRCh37
     rm -f clinvar.vcf.gz
 fi
@@ -133,11 +139,11 @@ download_organism() {
     local gff_file=$(basename "$gff_url" .gz)
     local fa_file=$(basename "$fa_url" .gz)
     if [ ! -f "$gff_file" ]; then
-        wget -q --show-progress "$gff_url"
+        wget -c -q --show-progress "$gff_url"
         gunzip "$(basename "$gff_url")"
     fi
     if [ ! -f "$fa_file" ]; then
-        wget -q --show-progress "$fa_url"
+        wget -c -q --show-progress "$fa_url"
         gunzip "$(basename "$fa_url")"
         samtools faidx "$fa_file"
     fi

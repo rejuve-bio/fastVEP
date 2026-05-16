@@ -15,8 +15,8 @@ conda-bld/
 # Large data (downloaded via benchmarks/download_data.sh)
 test_data/
 
-# Test directory (small test files are force-added via git add -f)
-tests/
+# Root test directory contains large downloaded data files — tracked files are force-added via git add -f
+/tests/
 
 # Benchmark data and output (scripts are tracked)
 benchmarks/output/
@@ -38,3 +38,9 @@ data/
 # tabix index files cached during remote queries (placed in CWD by htslib)
 *.tbi
 *.csi
+.venv
+.env
+api/.env
+__pycache__/
+.pytest_cache/
+*.pyc
