@@ -1,59 +1,69 @@
 # fastVEP JSON API
 
-A thin Python/FastAPI wrapper around `fastvep-web` that accepts variants in plain JSON and returns
-rich annotation results — no VCF formatting required from the caller.
+A Python/FastAPI wrapper around `fastvep-web` that lets you annotate genomic variants
+by posting plain JSON — no VCF formatting required.
 
 ## How it works
 
 ```
-caller  ──POST /annotate──▶  api (FastAPI)  ──POST /api/annotate──▶  fastvep-web (Rust)
-         JSON variants                         VCF text in JSON body
-         ◀──────────────────  JSON results  ◀──────────────────────
+Your app  ──POST /annotate──▶  api (FastAPI :8000)  ──POST /api/annotate──▶  fastvep-web (Rust :8080)
+           {"chr","pos","ref","alt"}                    VCF text in body
+           ◀────────────────────  full annotation JSON  ◀─────────────────────────────────────────────
 ```
 
-The wrapper converts your JSON variant objects to VCF format in memory, forwards the request to
-`fastvep-web`, and returns the result unchanged.
+The wrapper converts your variant objects to VCF in memory, forwards the request
+to `fastvep-web`, and returns the full annotation result including ACMG-AMP
+classification (enabled by default).
 
-## Prerequisites
+---
 
-1. `fastvep-web` must be running and reachable (see [../DEPLOYMENT.md](../DEPLOYMENT.md))
-2. Genome data must be present (run `scripts/deploy-full.sh` once to download it)
+## Setup
 
-## Quick start
+> **First time on a fresh server?** Run `setup.sh` from the repo root instead —
+> it handles everything (Docker build + genome data download) in one step:
+> ```bash
+> bash setup.sh minimal    # ~10 GB, ~30 min — GRCh38 + ClinVar
+> bash setup.sh clinical   # ~20 GB, ~1 hr  — + dbSNP + model organisms
+> bash setup.sh full       # ~55 GB, ~6 hrs — + gnomAD v4 + GRCh37 (recommended)
+> docker compose up -d
+> ```
 
-**Standalone (dev):**
+If genome data is already downloaded, start both services from the **repo root**:
+
 ```bash
+cp .env.example .env      # set DATA_DIR to where your genome data lives
+docker compose up -d
+```
+
+The `api` service waits for `fastvep-web` to finish loading the GFF3 (~1–2 min)
+before it starts accepting requests.
+
+### Dev / standalone (no Docker)
+
+```bash
+# From the repo root — fastvep-web must already be running on port 8080
 cd api
 pip install -r requirements.txt
-FASTVEP_URL=http://localhost:8080 uvicorn main:app --host 0.0.0.0 --port 8000
+FASTVEP_URL=http://localhost:8080 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**Docker:**
-```bash
-docker build -t fastvep-api ./api
-docker run -p 8000:8000 -e FASTVEP_URL=http://your-fastvep-web:8080 fastvep-api
-```
-
-**Docker Compose (recommended — starts both services):**
-```bash
-cp .env.example .env          # edit DATA_DIR to point at your genome data
-docker-compose up --build
-```
+---
 
 ## Endpoints
 
 ### `GET /health`
 
-Returns 200 when the API and `fastvep-web` backend are both up.
+Checks that the API is up and `fastvep-web` is reachable.
 
 ```bash
 curl http://localhost:8000/health
 ```
+
 ```json
 {"status": "ok", "backend": "ok"}
 ```
 
-Returns 503 if `fastvep-web` is unreachable.
+Returns `503` if `fastvep-web` cannot be reached.
 
 ---
 
@@ -61,15 +71,15 @@ Returns 503 if `fastvep-web` is unreachable.
 
 Annotate one or more variants.
 
-**Request body:**
+#### Request fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `variants` | `Variant[]` | — | List of variants (required unless using shorthand) |
-| `acmg` | `bool` | `true` | Run ACMG-AMP classification |
+| `variants` | `Variant[]` | — | List of variants to annotate |
+| `acmg` | `bool` | `true` | Include ACMG-AMP classification in the response |
 | `pick` | `bool` | `false` | Return only the most severe consequence per variant |
 
-**`Variant` object:**
+Each `Variant`:
 
 | Field | Type | Example |
 |-------|------|---------|
@@ -78,12 +88,18 @@ Annotate one or more variants.
 | `ref` | `string` | `"A"` |
 | `alt` | `string` | `"T"` |
 
-**Single-variant shorthand** (omit the `variants` wrapper):
-```json
-{"chr": "chr17", "pos": 43071077, "ref": "A", "alt": "T"}
+#### Single variant (shorthand)
+
+You can omit the `variants` wrapper and post one variant directly:
+
+```bash
+curl -X POST http://localhost:8000/annotate \
+  -H "Content-Type: application/json" \
+  -d '{"chr": "chr17", "pos": 43071077, "ref": "A", "alt": "T"}'
 ```
 
-**Batch request:**
+#### Batch (multiple variants)
+
 ```bash
 curl -X POST http://localhost:8000/annotate \
   -H "Content-Type: application/json" \
@@ -95,7 +111,18 @@ curl -X POST http://localhost:8000/annotate \
   }'
 ```
 
-**Example response (coding variant with ACMG):**
+#### Disable ACMG (faster, smaller response)
+
+```bash
+curl -X POST http://localhost:8000/annotate \
+  -H "Content-Type: application/json" \
+  -d '{"chr": "chr1", "pos": 69134, "ref": "A", "alt": "G", "acmg": false}'
+```
+
+#### Example response
+
+A coding variant in BRCA1 with the **full** genome tier (gnomAD + ClinVar loaded):
+
 ```json
 {
   "count": 1,
@@ -125,17 +152,18 @@ curl -X POST http://localhost:8000/annotate \
           "exon": "18/24",
           "protein_start": 1699,
           "protein_end": 1699,
+          "clinvar": {
+            "clinical_significance": "Pathogenic",
+            "review_status": "criteria_provided,_multiple_submitters,_no_conflicts"
+          },
           "acmg": {
             "classification": "LikelyPathogenic",
             "shorthand": "LP",
             "criteria": [
-              {"code": "PM2_Supporting", "met": true, "summary": "Absent in gnomAD"},
-              {"code": "PP3", "met": true, "summary": "REVEL score 0.92"}
+              {"code": "PM2_Supporting", "met": true,  "summary": "Absent in gnomAD v4"},
+              {"code": "PP5",            "met": true,  "summary": "ClinVar Pathogenic (2★)"},
+              {"code": "BA1",            "met": false, "summary": "AF not above 5% threshold"}
             ]
-          },
-          "clinvar": {
-            "clinical_significance": "Pathogenic",
-            "review_status": "criteria_provided,_multiple_submitters,_no_conflicts"
           }
         }
       ]
@@ -144,9 +172,55 @@ curl -X POST http://localhost:8000/annotate \
 }
 ```
 
+> **Note:** `acmg.criteria` depth depends on which SA databases are loaded.
+> With the **minimal** tier (ClinVar only), frequency-based criteria like
+> `PM2`, `BA1`, `BS1` will show `evaluated: false` — they require gnomAD,
+> which is included in the **full** tier.
+
+#### Annotation fields reference
+
+| Field | Present when | Description |
+|-------|-------------|-------------|
+| `gene_symbol`, `gene_id` | Always (coding) | Gene identifiers |
+| `consequence_terms`, `impact` | Always | SO consequence terms + HIGH/MODERATE/LOW/MODIFIER |
+| `hgvsc`, `hgvsp`, `hgvsg` | Coding variants | HGVS nomenclature |
+| `amino_acids`, `codons` | Missense | Amino acid and codon change |
+| `exon`, `intron` | Exonic/intronic | Position within transcript |
+| `canonical`, `mane_select` | Where applicable | Transcript flags |
+| `clinvar` | ClinVar loaded | Clinical significance + review status |
+| `gnomad` | gnomAD loaded (full tier) | Population allele frequencies |
+| `dbsnp` | dbSNP loaded (clinical/full) | rs ID |
+| `acmg` | `acmg: true` (default) | Full ACMG-AMP classification block |
+
+---
+
+## Error codes
+
+| Code | Meaning |
+|------|---------|
+| `422` | Invalid request body (missing or wrong-type fields) |
+| `503` | `fastvep-web` is not reachable |
+| `504` | `fastvep-web` did not respond within 120 seconds |
+| `502` | `fastvep-web` returned an empty or non-JSON response |
+
+---
+
 ## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FASTVEP_URL` | `http://localhost:8080` | URL of the `fastvep-web` backend |
-| `CORS_ORIGINS` | `*` | Comma-separated allowed origins (e.g. `https://myapp.com,https://api.myapp.com`) |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins |
+
+When running via Docker Compose these are set automatically.
+To restrict CORS in production, set `CORS_ORIGINS=https://myapp.com` in `.env`.
+
+---
+
+## Running the tests
+
+```bash
+cd api
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
