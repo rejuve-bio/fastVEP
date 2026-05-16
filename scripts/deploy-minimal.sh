@@ -10,10 +10,12 @@
 set -euo pipefail
 
 FASTVEP_BIN="${FASTVEP_BIN:-/root/fastVEP/target/release}"
-DATA_DIR="/opt/fastvep/data"
-BIN_DIR="/opt/fastvep/bin"
+DATA_DIR="${DATA_DIR:-/opt/fastvep/data}"
+BIN_DIR="${BIN_DIR:-/opt/fastvep/bin}"
 
 echo "=== fastVEP Minimal Deployment ==="
+echo "Data directory : ${HOST_DATA_DIR:-$DATA_DIR}"
+echo "Bin directory  : $BIN_DIR"
 echo "Estimated disk usage: ~10GB"
 echo ""
 
@@ -36,12 +38,12 @@ mkdir -p "$DATA_DIR/hg38_ensembl_115/sa"
 cd "$DATA_DIR/hg38_ensembl_115"
 
 if [ ! -f Homo_sapiens.GRCh38.115.gff3 ]; then
-    wget -q --show-progress https://ftp.ensembl.org/pub/release-115/gff3/homo_sapiens/Homo_sapiens.GRCh38.115.gff3.gz
+    wget -c -q --show-progress https://ftp.ensembl.org/pub/release-115/gff3/homo_sapiens/Homo_sapiens.GRCh38.115.gff3.gz
     gunzip Homo_sapiens.GRCh38.115.gff3.gz
 fi
 
 if [ ! -f Homo_sapiens.GRCh38.dna.primary_assembly.fa ]; then
-    wget -q --show-progress https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+    wget -c -q --show-progress https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
     gunzip Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
     samtools faidx Homo_sapiens.GRCh38.dna.primary_assembly.fa
 fi
@@ -50,7 +52,7 @@ fi
 echo "[3/4] Building ClinVar database (~40MB)..."
 cd "$DATA_DIR/hg38_ensembl_115/sa"
 if [ ! -f clinvar.osa ]; then
-    wget -q --show-progress https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+    wget -c -q --show-progress https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
     "$BIN_DIR/fastvep" sa-build --source clinvar -i clinvar.vcf.gz -o clinvar --assembly GRCh38
     rm -f clinvar.vcf.gz
 fi
